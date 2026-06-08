@@ -17,11 +17,13 @@
 
 #include "deca_spi.h"
 #include "deca_gpio.h"
-// #include "decadriver/deca_device_api.h"
-// #include "decadriver/deca_regs.h"
+#include "deca_device_api.h"
+#include "deca_regs.h"
 #include <driver/spi_master.h>
 #include <driver/gpio.h>
 #include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 static const char *TAG = "deca_spi";
 

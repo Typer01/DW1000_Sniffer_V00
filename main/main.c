@@ -1,5 +1,5 @@
 /**
- * @file UWB_Init_Test.cpp
+ * @file UWB_Init_Test.c
  * @brief DW1000 initialization test for ESP32-S3
  * 
  * This application tests the basic initialization sequence of the DW1000 UWB transceiver.
@@ -7,17 +7,17 @@
  * Used to verify hardware connections and basic DW1000 functionality.
  */
 
-#include <Arduino.h>
-#include <HardwareDefs.hpp>
-#include <Blink.hpp>
+// #include <Arduino.h>
+// #include <HardwareDefs.hpp>
+// #include <Blink.hpp>
+
 // Include DW1000 driver
-extern "C"
-{
-#include "platform/deca_spi.h"
-#include "platform/deca_gpio.h"
-#include "decadriver/deca_device_api.h"
-#include "decadriver/deca_regs.h"
-}
+// extern "C"
+// {
+     #include "deca_spi.h"
+    #include "deca_gpio.h"
+    #include "deca_device_api.h"
+// };
 
 /* DW1000 configuration - Channel 5, 850kbps, 16MHz PRF */
 static dwt_config_t dw1000_config = {

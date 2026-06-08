@@ -6,7 +6,9 @@ idf_component_register(
         "include"
     REQUIRES 
         deca_gpio
+        decadriver
         esp_driver_gpio 
         esp_driver_spi
+        freertos
     
 )

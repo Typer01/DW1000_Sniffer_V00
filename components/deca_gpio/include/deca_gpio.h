@@ -18,8 +18,8 @@ extern "C"
 {
 #endif
 
-// #include <driver/gpio.h>
-// #include "decadriver/deca_device_api.h"
+#include <driver/gpio.h>
+#include "deca_device_api.h"
 
     /*! ------------------------------------------------------------------------------------------------------------------
      * Function: dw1000_gpio_init()

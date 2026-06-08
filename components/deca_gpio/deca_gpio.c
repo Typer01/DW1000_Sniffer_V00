@@ -14,8 +14,8 @@
 
 
 #include "deca_spi.h"
-// #include "decadriver/deca_device_api.h"
-// #include "decadriver/deca_regs.h"
+#include "deca_device_api.h"
+#include "deca_regs.h"
 
 #include <driver/gpio.h>
 #include <freertos/FreeRTOS.h>
