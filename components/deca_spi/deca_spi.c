@@ -16,7 +16,7 @@
 #include <rom/ets_sys.h>
 
 #include "deca_spi.h"
-// #include "deca_gpio.h"
+#include "deca_gpio.h"
 // #include "decadriver/deca_device_api.h"
 // #include "decadriver/deca_regs.h"
 #include <driver/spi_master.h>
@@ -217,7 +217,7 @@ int closespi(void)
  * Takes two separate byte buffers for write header and write data
  * returns 0 for success, or -1 for error
  */
-int writetospi(uint16 headerLength, const uint8 *headerBuffer, uint32 bodylength, const uint8 *bodyBuffer)
+int writetospi(uint16_t headerLength, const uint8_t *headerBuffer, uint32_t bodylength, const uint8_t *bodyBuffer)
 {
     esp_err_t ret;
     spi_transaction_t trans;
@@ -280,7 +280,7 @@ int writetospi(uint16 headerLength, const uint8 *headerBuffer, uint32 bodylength
  * returns the offset into read buffer where first byte of read data may be found,
  * or returns -1 if there was an error
  */
-int readfromspi(uint16 headerLength, const uint8 *headerBuffer, uint32 readlength, uint8 *readBuffer)
+int readfromspi(uint16_t headerLength, const uint8_t *headerBuffer, uint32_t readlength, uint8_t *readBuffer)
 {
     esp_err_t ret;
     spi_transaction_t trans;

@@ -1,12 +1,13 @@
-
 idf_component_register(
     SRCS 
-        "deca_spi.c"
+        "deca_gpio.c"
     INCLUDE_DIRS 
         "include"
     REQUIRES 
-        deca_gpio
+        deca_spi
         esp_driver_gpio 
         esp_driver_spi
-    
+        freertos 
+        esp_common 
+        esp_system
 )
