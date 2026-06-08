@@ -19,9 +19,9 @@ extern "C"
 #endif
 
 #include <stdint.h>
-#include <driver/gpio.h>
-#include <driver/spi_master.h>
-#include "decadriver/deca_types.h"
+// #include <driver/gpio.h>
+// #include <driver/spi_master.h>
+// #include "decadriver/deca_types.h"
 
     /*! ------------------------------------------------------------------------------------------------------------------
      * Function: dw1000_spi_init()

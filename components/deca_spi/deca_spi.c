@@ -1,6 +1,4 @@
-#include <stdio.h>
 #include "deca_spi.h"
-
 /*! ----------------------------------------------------------------------------
  * @file    deca_spi.c
  * @brief   SPI access functions for ESP32-S3 using ESP-IDF SPI Master driver
@@ -12,15 +10,15 @@
  *
  * All rights reserved.
  */
+#include <stdint.h>
 #include <string.h>
 #include <esp_rom_gpio.h>
 #include <rom/ets_sys.h>
 
 #include "deca_spi.h"
-#include "deca_gpio.h"
-#include "decadriver/deca_device_api.h"
-#include "decadriver/deca_regs.h"
-
+// #include "deca_gpio.h"
+// #include "decadriver/deca_device_api.h"
+// #include "decadriver/deca_regs.h"
 #include <driver/spi_master.h>
 #include <driver/gpio.h>
 #include <esp_log.h>

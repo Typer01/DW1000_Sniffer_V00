@@ -10,7 +10,6 @@
 #include <Arduino.h>
 #include <HardwareDefs.hpp>
 #include <Blink.hpp>
-
 // Include DW1000 driver
 extern "C"
 {
