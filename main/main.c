@@ -14,10 +14,12 @@
 // Include DW1000 driver
 // extern "C"
 // {
-     #include "deca_spi.h"
-    #include "deca_gpio.h"
-    #include "deca_device_api.h"
+#include "deca_spi.h"
+#include "deca_gpio.h"
+#include "deca_device_api.h"
 // };
+#include <stdio.h>
+#include "hardware_defs.h"
 
 /* DW1000 configuration - Channel 5, 850kbps, 16MHz PRF */
 static dwt_config_t dw1000_config = {
@@ -36,23 +38,23 @@ static dwt_config_t dw1000_config = {
 /**
  * @brief Arduino setup function
  */
-void setup()
+void app_main(void)
 {
-    /* Initialize serial communication */
-    Serial.begin(115200);
-    vTaskDelay(1000);
+    // /* Initialize serial communication */
+    // Serial.begin(115200);
+    // vTaskDelay(1000);
 
-    /* Blink LED to indicate start */
-    Blink(500, 3, true, true, true);
+    // /* Blink LED to indicate start */
+    // Blink(500, 3, true, true, true);
 
-    Serial.println("\n========================================");
-    Serial.println("   DW1000 Simplified Init Test");
-    Serial.println("========================================\n");
+    printf("\n========================================");
+    printf("   DW1000 Simplified Init Test");
+    printf("========================================\n");
 
-    /* Setup IMU CS pin to high (deselect IMU) */
-    pinMode(IMU_CS_PIN, OUTPUT);
-    digitalWrite(IMU_CS_PIN, HIGH);
-    Serial.println("IMU CS set to HIGH");
+    // /* Setup IMU CS pin to high (deselect IMU) */
+    // pinMode(IMU_CS_PIN, OUTPUT);
+    // digitalWrite(IMU_CS_PIN, HIGH);
+    // Serial.println("IMU CS set to HIGH");
 
     /* Configure SPI bus */
     spi_bus_config_t spi_bus_cfg = {
@@ -68,60 +70,58 @@ void setup()
     /* Initialize DW1000 SPI */
     if (dw1000_spi_init(SPI2_HOST, (gpio_num_t)UWB_CS_PIN, &spi_bus_cfg) != 0)
     {
-        Serial.println("ERROR: SPI init failed!");
+        printf("ERROR: SPI init failed!");
         while (1)
             ;
     }
-    Serial.println("SPI initialized");
+    printf("SPI initialized");
 
     /* Configure DW1000 GPIO */
     if (dw1000_gpio_init((gpio_num_t)UWB_RST_PIN, (gpio_num_t)UWB_IRQ_PIN, GPIO_NUM_NC) != 0)
     {
-        Serial.println("ERROR: GPIO init failed!");
+        printf("ERROR: GPIO init failed!");
         while (1)
             ;
     }
-    Serial.println("GPIO initialized");
+    printf("GPIO initialized");
 
     /* Reset DW1000 */
     dw1000_hard_reset();
     dw1000_spi_fix_bug(); // Apply SPI bug fix after reset
-    Serial.println("DW1000 reset complete");
-    vTaskDelay(5);
+    printf("DW1000 reset complete");
 
     /* Initialize DW1000 with microcode */
-    Serial.println("Calling dwt_initialise(DWT_LOADUCODE)...");
+   printf("Calling dwt_initialise(DWT_LOADUCODE)...");
     int init_result = dwt_initialise(DWT_LOADUCODE);
     if (init_result == DWT_ERROR)
     {
-        Serial.println("ERROR: dwt_initialise failed!");
-        Serial.printf("Init result: %d\n", init_result);
+        printf("ERROR: dwt_initialise failed!");
+        printf("Init result: %d\n", init_result);
         while (1)
             ;
     }
-    Serial.println("SUCCESS: dwt_initialise passed");
+    printf("SUCCESS: dwt_initialise passed");
 
     /* Set SPI to high speed */
     spi_set_rate_high();
-    Serial.println("SPI speed set to high (16 MHz)");
+    printf("SPI speed set to high (16 MHz)");
 
     /* Configure DW1000 */
     dwt_configure(&dw1000_config);
-    Serial.println("DW1000 configured");
+    printf("DW1000 configured");
 
     /* Read and print device ID */
     uint32_t dev_id = dwt_readdevid();
-    Serial.printf("\nDevice ID: 0x%08lX\n", dev_id);
+    printf("\nDevice ID: 0x%08lX\n", dev_id);
 
-    Serial.println("\n========================================");
-    Serial.println("   Initialization Complete!");
-    Serial.println("========================================\n");
+    printf("\n========================================");
+    printf("   Initialization Complete!");
+    printf("========================================\n");
+
+    while(1)
+    {
+        printf("---Done---");
+    }
+
 }
 
-/**
- * @brief Arduino loop function
- */
-void loop()
-{
-    vTaskDelay(1000);
-}
