@@ -60,14 +60,23 @@ int dw1000_spi_init(spi_host_device_t spi_peripheral_in, gpio_num_t io_cs, const
     cs_pin = io_cs;
 
     /* Configure GPIO for CS (manual control) - always needed */
-    gpio_config_t cs_conf = {
+    gpio_config_t cs_conf = { // This is a custom type defined in gpio.h
         .pin_bit_mask = (1ULL << io_cs),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE};
-    gpio_config(&cs_conf);
-    gpio_set_level(io_cs, 1); /* CS high (inactive) */
+
+    ret = gpio_config(&cs_conf);
+    if (ret != ESP_OK){
+        ESP_LOGE(TAG, "Failed GPIO CONFIG : %d", ret);
+    }
+    
+
+    ret = gpio_set_level(io_cs, 1); /* CS high (inactive) */
+    if (ret != ESP_OK){
+        ESP_LOGE(TAG, "Failed GPIO Set Level : %d", ret);
+    }
 
     /* Initialize SPI bus if bus config is provided */
     if (spi_bus_cfg != NULL)
@@ -83,6 +92,10 @@ int dw1000_spi_init(spi_host_device_t spi_peripheral_in, gpio_num_t io_cs, const
         {
             spi_bus_initialized_by_us = true;
         }
+    }
+    else
+    {
+        ESP_LOGI(TAG, "SPI Bus Assumed Initialized Externally : %d", ret);
     }
     /* If spi_bus_cfg is NULL, assume bus is already initialized externally */
 

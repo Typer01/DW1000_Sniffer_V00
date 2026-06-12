@@ -20,6 +20,9 @@
 // };
 #include <stdio.h>
 #include "hardware_defs.h"
+#include "esp_log.h"
+
+static const char *TAG = "MAIN";
 
 /* DW1000 configuration - Channel 5, 850kbps, 16MHz PRF */
 static dwt_config_t dw1000_config = {
@@ -70,25 +73,22 @@ void app_main(void)
     /* Initialize DW1000 SPI */
     if (dw1000_spi_init(SPI2_HOST, (gpio_num_t)UWB_CS_PIN, &spi_bus_cfg) != 0)
     {
-        printf("ERROR: SPI init failed!");
+        ESP_LOGE(TAG,"ERROR: SPI init failed!");
         while (1)
             ;
     }
-    printf("SPI initialized");
 
     /* Configure DW1000 GPIO */
     if (dw1000_gpio_init((gpio_num_t)UWB_RST_PIN, (gpio_num_t)UWB_IRQ_PIN, GPIO_NUM_NC) != 0)
     {
-        printf("ERROR: GPIO init failed!");
-        while (1)
-            ;
+         ESP_LOGE(TAG,"ERROR: GPIO init failed!");
+        while (1);
     }
-    printf("GPIO initialized");
 
     /* Reset DW1000 */
     dw1000_hard_reset();
     dw1000_spi_fix_bug(); // Apply SPI bug fix after reset
-    printf("DW1000 reset complete");
+    ESP_LOGI(TAG,"DW1000 reset complete\n");
 
     /* Initialize DW1000 with microcode */
    printf("Calling dwt_initialise(DWT_LOADUCODE)...");
@@ -118,10 +118,10 @@ void app_main(void)
     printf("   Initialization Complete!");
     printf("========================================\n");
 
-    while(1)
-    {
-        printf("---Done---");
-    }
-
+    // while(1)
+    // {
+    //      vTaskDelay(pdMS_TO_TICKS(1000));
+    // }
+    printf("--- Test Finished ---");
 }
 

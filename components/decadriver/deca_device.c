@@ -12,6 +12,8 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include "esp_log.h" // 1. Include the logging library
+
 
 #include "deca_types.h"
 #include "deca_param_types.h"
@@ -169,6 +171,8 @@ int dwt_setlocaldataptr(unsigned int index)
 #define VTEMP_ADDRESS (0x09)
 #define XTRIM_ADDRESS (0x1E)
 
+static const char *TAG = "DECA_DEVICE";
+
 int dwt_initialise(int config)
 {
     uint16 otp_xtaltrim_and_rev = 0;
@@ -190,6 +194,8 @@ int dwt_initialise(int config)
     // Read and validate device ID, return -1 if not recognised
     if (DWT_DEVICE_ID != dwt_readdevid()) // MP IC ONLY (i.e. DW1000) FOR THIS CODE
     {
+        ESP_LOGE(TAG, "Device ID Mismatch"); // Test Logging
+
         return DWT_ERROR;
     }
 
@@ -320,6 +326,8 @@ int dwt_initialise(int config)
     pdw1000local->longFrames = (pdw1000local->sysCFGreg & SYS_CFG_PHR_MODE_11) >> SYS_CFG_PHR_MODE_SHFT; // configure longFrames
 
     pdw1000local->txFCTRL = dwt_read32bitreg(TX_FCTRL_ID);
+
+    ESP_LOGI(TAG, "DWT_SUCCESS"); // Test logging 
 
     return DWT_SUCCESS;
 
@@ -582,7 +590,10 @@ uint32 dwt_getlotid(void)
  */
 uint32 dwt_readdevid(void)
 {
-    return dwt_read32bitoffsetreg(DEV_ID_ID, 0);
+    uint32 devID = dwt_read32bitoffsetreg(DEV_ID_ID, 0);
+    ESP_LOGE(TAG, "Device ID: %d", devID); 
+
+    return devID;
 }
 
 /*! ------------------------------------------------------------------------------------------------------------------
