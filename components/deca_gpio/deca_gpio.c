@@ -102,9 +102,10 @@ int dw1000_gpio_init(gpio_num_t io_rst, gpio_num_t io_irq, gpio_num_t io_wake)
         .pin_bit_mask = (1ULL << io_irq),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_ENABLE, //PROBLEM HERERERER!!!!!!!!!!!!
+        .pull_down_en = GPIO_PULLDOWN_DISABLE, // Changed due to external PD on MakerFabs board
         .intr_type = GPIO_INTR_POSEDGE /* DW1000 IRQ is active high */
     };
+
     gpio_config(&irq_conf);
 
     /* Reset after pin initialization */
