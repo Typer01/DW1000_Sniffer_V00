@@ -60,37 +60,12 @@ static const char *TAG = "MAIN";
 
 static dwt_config_t non_dps_scan_matrix[] = {
     // This matrix consists of all non-dps combinations of preamble parameters. Additionally, this currently assumes that a standard SFD mode is used
-
-    // ----- 16MHz PRF -----
-        // - 6.8M Data Rate 
-            // --- Pcode 5
-            {3, DWT_PRF_16M, DWT_PLEN_64, DWT_PAC8, 5, 5, 0, DWT_BR_6M8, DWT_PHRMODE_STD, (64 + 1 + 8 - 8)},
-            {3, DWT_PRF_16M, DWT_PLEN_128, DWT_PAC8, 5, 5, 0, DWT_BR_6M8, DWT_PHRMODE_STD, (128 + 1 + 8 - 8)},
-            {3, DWT_PRF_16M, DWT_PLEN_256, DWT_PAC16, 5, 5, 0, DWT_BR_6M8, DWT_PHRMODE_STD, (256 + 1 + 8 - 16)},
-            // --- Pcode 6
-            {3, DWT_PRF_16M, DWT_PLEN_64, DWT_PAC8, 6, 6, 0, DWT_BR_6M8, DWT_PHRMODE_STD, (64 + 1 + 8 - 8)},
-            {3, DWT_PRF_16M, DWT_PLEN_128, DWT_PAC8, 6, 6, 0, DWT_BR_6M8, DWT_PHRMODE_STD, (128 + 1 + 8 - 8)},
-            {3, DWT_PRF_16M, DWT_PLEN_256, DWT_PAC16, 6, 6, 0, DWT_BR_6M8, DWT_PHRMODE_STD, (256 + 1 + 8 - 16)},
-        
-        // - 850k Data Rate 
-            // --- Pcode 5
-            {3, DWT_PRF_16M, DWT_PLEN_256, DWT_PAC16, 5, 5, 0, DWT_BR_850K, DWT_PHRMODE_STD, (256 + 1 + 8 - 16)},
-            {3, DWT_PRF_16M, DWT_PLEN_512, DWT_PAC16, 5, 5, 0, DWT_BR_850K, DWT_PHRMODE_STD, (512 + 1 + 8 - 16)},
-            {3, DWT_PRF_16M, DWT_PLEN_1024, DWT_PAC32, 5, 5, 0, DWT_BR_850K, DWT_PHRMODE_STD, (1024 + 1 + 8 - 32)},
-            // --- Pcode 6
-            {3, DWT_PRF_16M, DWT_PLEN_256, DWT_PAC16, 6, 6, 0, DWT_BR_850K, DWT_PHRMODE_STD, (256 + 1 + 8 - 16)},
-            {3, DWT_PRF_16M, DWT_PLEN_512, DWT_PAC16, 6, 6, 0, DWT_BR_850K, DWT_PHRMODE_STD, (512 + 1 + 8 - 16)},
-            {3, DWT_PRF_16M, DWT_PLEN_1024, DWT_PAC32, 6, 6, 0, DWT_BR_850K, DWT_PHRMODE_STD, (1024 + 1 + 8 - 32)},
-
         // - 110k Data Rate 
             // --- Pcode 5
-            {3, DWT_PRF_16M, DWT_PLEN_2048, DWT_PAC64, 5, 5, 0, DWT_BR_110K, DWT_PHRMODE_STD, (2048 + 1 + 8 - 64)},
+            {3, DWT_PRF_16M, DWT_PLEN_2048, DWT_PAC64, 5, 5, 0, DWT_BR_110K, DWT_PHRMODE_STD, (2048 + 1 + 8 - 64)}, // adjusting for test
             {3, DWT_PRF_16M, DWT_PLEN_4096, DWT_PAC64, 5, 5, 0, DWT_BR_110K, DWT_PHRMODE_STD, (4096 + 1 + 8 - 64)},
             
-            // --- Pcode 6
-            {3, DWT_PRF_16M, DWT_PLEN_2048, DWT_PAC64, 6, 6, 0, DWT_BR_110K, DWT_PHRMODE_STD, (2048 + 1 + 8 - 64)},
-            {3, DWT_PRF_16M, DWT_PLEN_4096, DWT_PAC64, 6, 6, 0, DWT_BR_110K, DWT_PHRMODE_STD, (4096 + 1 + 8 - 64)},
-
+           
     // 64MHz PRF (Pcode 9,10,11,12)
     // To be added/Tested later
     
@@ -154,75 +129,95 @@ void app_main(void)
 
 
     // ------ Sniffing Loop ------
-
-     
-    static uint32_t status_reg = 0;
-
-    ESP_LOGI(TAG, "Starting Sniff");
-
-    for(int i = 0; i < NUM_CONFIGS; i++)
+    while(1)
     {
-        dwt_configure(&non_dps_scan_matrix[i]);
-        
-        ESP_LOGI(TAG,"Configuration %d applied", i);
+     
+        static uint32_t status_reg = 0;
 
-        dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG | SYS_STATUS_RXPRD | SYS_STATUS_ALL_RX_ERR); // Clear all RX status bits before starting reception
-        ESP_LOGI(TAG, "Cleared RX Status Bits");
+        ESP_LOGI(TAG, "------ Starting Sniff ------");
 
-        /* Activate reception immediately. See NOTE 3 below. */
-        int rx_enable_ret = dwt_rxenable(DWT_START_RX_IMMEDIATE);
-        if (rx_enable_ret != DWT_SUCCESS)
-        {
-            ESP_LOGE(TAG,"ERROR: dwt_rxenable failed with code %d\n", rx_enable_ret);
-        }
-        ESP_LOGI(TAG, "Reception Activated");
-
-        int64_t t_start = esp_timer_get_time();
-
-        while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_ERR | SYS_STATUS_RXPRD)))
-        {
+        // for(int i = 0; i < NUM_CONFIGS; i++)
+        // {
+            dwt_configure(&non_dps_scan_matrix[0]);
             
-            if (esp_timer_get_time() - t_start > 2000000) // 2 second timeout
+            ESP_LOGI(TAG,"Configuration %d applied", 0);
+
+            dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG | SYS_STATUS_RXPRD | SYS_STATUS_ALL_RX_ERR); // Clear all RX status bits before starting reception
+            ESP_LOGI(TAG, "Cleared RX Status Bits");
+
+            /* Activate reception immediately. See NOTE 3 below. */
+            int rx_enable_ret = dwt_rxenable(DWT_START_RX_IMMEDIATE);
+            if (rx_enable_ret != DWT_SUCCESS)
             {
-                ESP_LOGE(TAG, "Next Config: prev: %d\n", i);
-                if (status_reg & SYS_STATUS_ALL_RX_ERR)
-                    {
-                        ESP_LOGI(TAG,
-                            "Config %d error status = 0x%08lx",
-                            i,
-                            status_reg);
-                            break;
-                    }
-                t_start = esp_timer_get_time();
-                break;
+                ESP_LOGE(TAG,"ERROR: dwt_rxenable failed with code %d\n", rx_enable_ret);
+            }
+            ESP_LOGI(TAG, "Reception Activated");
+
+            int64_t t_start = esp_timer_get_time();
+
+            while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_ERR | SYS_STATUS_RXPRD)))
+            {
                 
-            }
-            vTaskDelay(1);
-        };
+                if (esp_timer_get_time() - t_start > 2000000) // 2 second timeout
+                {
+                    ESP_LOGE(TAG, "Timeout: Trying Again");
+                    if (status_reg & SYS_STATUS_ALL_RX_ERR)
+                        {
+                            ESP_LOGI(TAG,
+                                "Config %d error status = 0x%08lx",
+                                12,
+                                status_reg);
+                                break;
+                        }
+                    t_start = esp_timer_get_time();
+                    
+                }
+                vTaskDelay(1);
+            };
 
-        if (status_reg & SYS_STATUS_RXPRD)
+            if (status_reg & SYS_STATUS_RXPRD)
+                {
+                    ESP_LOGI(TAG, "PREAMBLE DETECTED: Iteration Number : %d", 12);
+                    ESP_LOGI(TAG, " --- SYS_STATUS = 0x%08" PRIx32, status_reg);
+                    ESP_LOGI(TAG, "SYS_STATUS = 0x%08lx", status_reg);
+                    //dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXPRD); // Clear preamble detect event
+                    //break; // Move to next configuration after preamble detection
+
+                    if(status_reg & SYS_STATUS_RXSFDD)
+                        ESP_LOGI(TAG, "RXSFDD");
+
+                    if(status_reg & SYS_STATUS_RXPHE)
+                    {
+                        ESP_LOGI(TAG, "RXPHE");
+                        dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXPHE);
+                        dwt_rxreset();
+                        dwt_rxenable(DWT_START_RX_IMMEDIATE);
+
+                    }
+                    if(status_reg & SYS_STATUS_RXFCE)
+                        ESP_LOGI(TAG, "RXFCE");
+
+                    if(status_reg & SYS_STATUS_RXFCG)
+                        ESP_LOGI(TAG, "RXFCG");
+
+                }
+
+            if (status_reg & SYS_STATUS_RXFCG)
             {
-                ESP_LOGI(TAG, "PREAMBLE DETECTED: Iteration Number : %d", i);
-                dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXPRD); // Clear preamble detect event
-                break; // Move to next configuration after preamble detection
+
+                ESP_LOGI(TAG, "DATA RECEIVED: Iteration Number : %d", 12);
+
+                /* Clear good RX frame event in the DW1000 status register. */
+                dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG);
             }
-
-        if (status_reg & SYS_STATUS_RXFCG)
-        {
-
-            ESP_LOGI(TAG, "DATA RECEIVED: Iteration Number : %d", i);
-
-            /* Clear good RX frame event in the DW1000 status register. */
-            dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG);
-        }
-        else
-        {
-            // Serial.println("RX Error occurred");
-            // /* Clear RX error events in the DW1000 status register. */
-            // dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_ERR);
-            // Serial.println("RX error events cleared");
-        }
+            else
+            {
+                // Serial.println("RX Error occurred");
+                // /* Clear RX error events in the DW1000 status register. */
+                // dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_ERR);
+                // Serial.println("RX error events cleared");
+            }
+        //}
     }
-    
 }
 
