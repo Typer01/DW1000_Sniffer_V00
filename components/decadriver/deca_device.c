@@ -591,7 +591,7 @@ uint32 dwt_getlotid(void)
 uint32 dwt_readdevid(void)
 {
     uint32 devID = dwt_read32bitoffsetreg(DEV_ID_ID, 0);
-    ESP_LOGE(TAG, "Device ID: %d", devID); 
+    ESP_LOGI(TAG, "Device ID: %X", devID); 
 
     return devID;
 }

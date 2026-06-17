@@ -24,6 +24,9 @@ static const char *TAG = "MAIN";
 /* Buffer to store received frame. See NOTE 1 below. */
 #define FRAME_LEN_MAX 127
 
+// Wall-clock time spent listening on each config before moving to the next.
+#define CONFIG_DWELL_US (5 * 1000000)
+
     // Data Rate to Reccomended PLEN
     // 6.8M - 64 or 128 or 256
     // 850k - 256 or 512 or 1024
@@ -39,13 +42,12 @@ static const char *TAG = "MAIN";
     // 2048 - 64
     // 4096 - 64
 
-static dwt_config_t non_dps_scan_matrix[] = {
-    // This matrix consists of all non-dps combinations of preamble parameters. Additionally, this currently assumes that a standard SFD mode is used
-        // - 110k Data Rate 
-            // --- Pcode 5
-            {3, DWT_PRF_16M, DWT_PLEN_2048, DWT_PAC64, 5, 5, 0, DWT_BR_110K, DWT_PHRMODE_STD, (2048 + 1 + 8 - 64)}, // adjusting for test, 110K, EXT gets most hits
-    // 850k not hitting much at start of TT
+static dwt_config_t scan_matrix[] = {
+    // CH3, 64M PRF, PHR_EXT — confirmed hits with real data during the full sweep
+    {3, DWT_PRF_64M, DWT_PLEN_2048, DWT_PAC64, 9, 9, 0, DWT_BR_110K, DWT_PHRMODE_EXT, (2048 + 1 + 8 - 64)},
+    {3, DWT_PRF_64M, DWT_PLEN_1024, DWT_PAC32, 9, 9, 0, DWT_BR_850K, DWT_PHRMODE_EXT, (1024 + 1 + 8 - 32)},
 };
+#define NUM_CONFIGS (sizeof(scan_matrix) / sizeof(scan_matrix[0]))
 
 /**
  * @brief Main Application
@@ -89,207 +91,172 @@ void app_main(void)
 
     ESP_LOGI(TAG, "DW1000 Ready");
 
-    const int cfg_idx = 0;
-
-    dwt_configure(&non_dps_scan_matrix[cfg_idx]);
-
-    ESP_LOGI(TAG, "Using configuration %d", cfg_idx);
-
     while (1)
     {
-        uint32_t status_reg = 0;
-        uint32_t RX_INFO_reg = 0;
-
-        bool preamble_seen = false;
-        bool sfd_seen = false;
-
-        dwt_forcetrxoff();
-
-        // Reset status flags
-        dwt_write32bitreg(SYS_STATUS_ID,SYS_STATUS_RXFCG |SYS_STATUS_RXFCE |SYS_STATUS_RXPHE |SYS_STATUS_RXRFSL |SYS_STATUS_RXRFTO |SYS_STATUS_RXPRD |SYS_STATUS_RXSFDD);
-
-        // Enable RX immediately, since the device is in idle mode after initialization
-        int rx_ret = dwt_rxenable(DWT_START_RX_IMMEDIATE);
-
-        if (rx_ret != DWT_SUCCESS)
+        for (size_t cfg_idx = 0; cfg_idx < NUM_CONFIGS; cfg_idx++)
         {
-            ESP_LOGE(TAG, "RX enable failed");
-            vTaskDelay(pdMS_TO_TICKS(100));
-            continue;
-        }
+            dwt_config_t *cfg = &scan_matrix[cfg_idx];
 
-        int64_t t_start = esp_timer_get_time();
+            dwt_forcetrxoff();
+            dwt_configure(cfg);
 
-        while (1)
-        {
-            status_reg = dwt_read32bitreg(SYS_STATUS_ID);
+            ESP_LOGI(TAG, "=== Config %u/%u: prf=%u plen=%u pac=%u rate=%u phr=%u nsSFD=%u ===",
+                     (unsigned)(cfg_idx + 1), (unsigned)NUM_CONFIGS,
+                     cfg->prf, cfg->txPreambLength, cfg->rxPAC, cfg->dataRate, cfg->phrMode, cfg->nsSFD);
 
-            if ((status_reg & SYS_STATUS_RXPRD) && !preamble_seen)
+            uint32_t preamble_count = 0, sfd_count = 0, good_count = 0;
+            uint32_t phe_count = 0, fce_count = 0, rfsl_count = 0, hw_to_count = 0;
+
+            bool preamble_seen = false;
+            bool sfd_seen = false;
+
+            // Reset status flags
+            dwt_write32bitreg(SYS_STATUS_ID,SYS_STATUS_RXFCG |SYS_STATUS_RXFCE |SYS_STATUS_RXPHE |SYS_STATUS_RXRFSL |SYS_STATUS_RXRFTO |SYS_STATUS_RXPRD |SYS_STATUS_RXSFDD);
+
+            // Enable RX immediately, since the device is in idle mode after initialization
+            int rx_ret = dwt_rxenable(DWT_START_RX_IMMEDIATE);
+
+            if (rx_ret != DWT_SUCCESS)
             {
-                ESP_LOGI(TAG, "PREAMBLE DETECTED");
-                preamble_seen = true;
-            }
-
-            if ((status_reg & SYS_STATUS_RXSFDD) && !sfd_seen)
-            {
-                ESP_LOGI(TAG, "SFD DETECTED");
-                sfd_seen = true;
-            }
-
-            if (status_reg & SYS_STATUS_RXFCG)
-            {
-                // RX_INFO_reg = dwt_read32bitreg(RX_FQUAL_ID);
-                // ESP_LOGI(TAG, "RX_FQUAL = 0x%08" PRIx32,RX_INFO_reg);
-
-                // uint32 cir_pwr;
-                // uint16 rxpacc;
-
-                // cir_pwr = dwt_read32bitoffsetreg(RX_FQUAL_ID,
-                //                                 0x06); // 0x06 is the offset for CIR_PWR in the RX_FQUAL register bank
-
-                // rxpacc = dwt_read16bitoffsetreg(RX_FINFO_ID,
-                //                                 0x02); // 0x02 is the offset for RXPACC in the RX_FINFO register bank
-
-
-                // ESP_LOGI(TAG,"RX_PWR = %d", cir_pwr);
-                // ESP_LOGI(TAG,"RX_PACC = %d", rxpacc);
-                // // ESP_LOGI(TAG,"CALULCATED POWER: %d dbm", (int)(10 * log10(cir_pwr *(131072)/ (rxpacc * rxpacc))));
-
-                ESP_LOGI(TAG, "GOOD FRAME RECEIVED");
-
-                uint32_t finfo = dwt_read32bitreg(RX_FINFO_ID);
-            
-
-                ESP_LOGI(TAG,"SYS_STATUS = 0x%08" PRIx32,status_reg);
-
-                dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG);
-
-                break;
-            }
-
-            if (status_reg & SYS_STATUS_RXPHE)
-            {
-                ESP_LOGW(TAG,"PHY HEADER ERROR  SYS_STATUS=0x%08" PRIx32,status_reg);
-
-                // RX_INFO_reg = dwt_read32bitreg(RX_FINFO_ID);
-                // ESP_LOGI(TAG, "RX_FINFO = 0x%08" PRIx32,RX_INFO_reg);
-
-                dwt_write32bitreg(SYS_STATUS_ID,SYS_STATUS_RXPHE |SYS_STATUS_RXSFDD | SYS_STATUS_RXPRD);
-
-                dwt_rxreset();
-
-                // CHANGE #3
-                preamble_seen = false;
-                sfd_seen = false;
-
-                dwt_rxenable(DWT_START_RX_IMMEDIATE);
-
-                // CHANGE #2
-                vTaskDelay(pdMS_TO_TICKS(1));
-
+                ESP_LOGE(TAG, "RX enable failed");
+                vTaskDelay(pdMS_TO_TICKS(100));
                 continue;
             }
 
-            if (status_reg & SYS_STATUS_RXFCE)
+            int64_t config_start = esp_timer_get_time();
+
+            while ((esp_timer_get_time() - config_start) < CONFIG_DWELL_US)
             {
-                ESP_LOGW(TAG,"FCS ERROR SYS_STATUS=0x%08" PRIx32,status_reg);
+                uint32_t status_reg = dwt_read32bitreg(SYS_STATUS_ID);
 
-                // CHANGE #1
-                dwt_write32bitreg(SYS_STATUS_ID,SYS_STATUS_RXFCE |SYS_STATUS_RXSFDD |SYS_STATUS_RXPRD);
-
-                dwt_rxreset();
-
-                // CHANGE #3
-                preamble_seen = false;
-                sfd_seen = false;
-
-                dwt_rxenable(DWT_START_RX_IMMEDIATE);
-
-                // CHANGE #2
-                vTaskDelay(pdMS_TO_TICKS(1));
-
-                continue;
-            }
-
-            if (status_reg & SYS_STATUS_RXRFSL)
-            {
-                ESP_LOGW(TAG,"REED SOLOMON ERROR SYS_STATUS=0x%08" PRIx32,status_reg);
-
-                // RX_INFO_reg = dwt_read32bitreg(RX_FINFO_ID);
-                // ESP_LOGI(TAG, "RX_FINFO = 0x%08" PRIx32,RX_INFO_reg);
-
-                // CHANGE #1
-                dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXRFSL |SYS_STATUS_RXSFDD |SYS_STATUS_RXPRD);
-
-                dwt_rxreset();
-
-                // CHANGE #3
-                preamble_seen = false;
-                sfd_seen = false;
-
-                dwt_rxenable(DWT_START_RX_IMMEDIATE);
-
-                // CHANGE #2
-                vTaskDelay(pdMS_TO_TICKS(1));
-
-                continue;
-            }
-
-            if (status_reg & SYS_STATUS_RXRFTO)
-            {
-                ESP_LOGW(TAG,"FRAME WAIT TIMEOUT");
-
-                dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXRFTO);
-
-                dwt_rxreset();
-
-                break;
-            }
-
-
-            if (status_reg & SYS_STATUS_RXFCG)
-            {
-                uint32_t frame_len =
-                    dwt_read32bitreg(RX_FINFO_ID) & RX_FINFO_RXFL_MASK_1023;
-
-                ESP_LOGI(TAG, "GOOD FRAME RECEIVED");
-                ESP_LOGI(TAG, "FRAME LENGTH = %lu", frame_len);
-
-                if (frame_len <= FRAME_LEN_MAX)
+                if ((status_reg & SYS_STATUS_RXPRD) && !preamble_seen)
                 {
-                    dwt_readrxdata(rx_buffer, frame_len, 0);
-
-                    ESP_LOGI(TAG, "FRAME DATA:");
-
-                    for (uint32_t i = 0; i < frame_len; i++)
-                    {
-                        printf("%02X ", rx_buffer[i]);
-                    }
-
-                    printf("\n");
+                    ESP_LOGI(TAG, "PREAMBLE DETECTED");
+                    preamble_seen = true;
+                    preamble_count++;
                 }
 
-                dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG);
+                if ((status_reg & SYS_STATUS_RXSFDD) && !sfd_seen)
+                {
+                    ESP_LOGI(TAG, "SFD DETECTED");
+                    sfd_seen = true;
+                    sfd_count++;
+                }
 
-                break;
+                if (status_reg & SYS_STATUS_RXFCG)
+                {
+                    good_count++;
+
+                    uint32_t frame_len = dwt_read32bitreg(RX_FINFO_ID) & RX_FINFO_RXFL_MASK_1023;
+
+                    ESP_LOGI(TAG, "GOOD FRAME RECEIVED, LEN=%lu, SYS_STATUS=0x%08" PRIx32, frame_len, status_reg);
+
+                    if (frame_len > 0 && frame_len <= FRAME_LEN_MAX)
+                    {
+                        dwt_readrxdata(rx_buffer, frame_len, 0);
+
+                        for (uint32_t i = 0; i < frame_len; i++)
+                        {
+                            printf("%02X ", rx_buffer[i]);
+                        }
+
+                        printf("\n");
+                    }
+
+                    dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG);
+
+                    preamble_seen = false;
+                    sfd_seen = false;
+                    dwt_rxenable(DWT_START_RX_IMMEDIATE);
+
+                    continue;
+                }
+
+                if (status_reg & SYS_STATUS_RXPHE)
+                {
+                    ESP_LOGW(TAG,"PHY HEADER ERROR  SYS_STATUS=0x%08" PRIx32,status_reg);
+
+                    phe_count++;
+
+                    dwt_write32bitreg(SYS_STATUS_ID,SYS_STATUS_RXPHE |SYS_STATUS_RXSFDD | SYS_STATUS_RXPRD);
+
+                    dwt_rxreset();
+
+                    preamble_seen = false;
+                    sfd_seen = false;
+
+                    dwt_rxenable(DWT_START_RX_IMMEDIATE);
+
+                    vTaskDelay(pdMS_TO_TICKS(1));
+
+                    continue;
+                }
+
+                if (status_reg & SYS_STATUS_RXFCE)
+                {
+                    ESP_LOGW(TAG,"FCS ERROR SYS_STATUS=0x%08" PRIx32,status_reg);
+
+                    fce_count++;
+
+                    dwt_write32bitreg(SYS_STATUS_ID,SYS_STATUS_RXFCE |SYS_STATUS_RXSFDD |SYS_STATUS_RXPRD);
+
+                    dwt_rxreset();
+
+                    preamble_seen = false;
+                    sfd_seen = false;
+
+                    dwt_rxenable(DWT_START_RX_IMMEDIATE);
+
+                    vTaskDelay(pdMS_TO_TICKS(1));
+
+                    continue;
+                }
+
+                if (status_reg & SYS_STATUS_RXRFSL)
+                {
+                    ESP_LOGW(TAG,"REED SOLOMON ERROR SYS_STATUS=0x%08" PRIx32,status_reg);
+
+                    rfsl_count++;
+
+                    dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXRFSL |SYS_STATUS_RXSFDD |SYS_STATUS_RXPRD);
+
+                    dwt_rxreset();
+
+                    preamble_seen = false;
+                    sfd_seen = false;
+
+                    dwt_rxenable(DWT_START_RX_IMMEDIATE);
+
+                    vTaskDelay(pdMS_TO_TICKS(1));
+
+                    continue;
+                }
+
+                if (status_reg & SYS_STATUS_RXRFTO)
+                {
+                    ESP_LOGW(TAG,"FRAME WAIT TIMEOUT");
+
+                    hw_to_count++;
+
+                    dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXRFTO);
+
+                    dwt_rxreset();
+
+                    preamble_seen = false;
+                    sfd_seen = false;
+
+                    dwt_rxenable(DWT_START_RX_IMMEDIATE);
+
+                    continue;
+                }
+
+                vTaskDelay(pdMS_TO_TICKS(5));
             }
 
-            if ((esp_timer_get_time() - t_start) > 5000000)
-            {
-                ESP_LOGI(TAG, "LISTEN TIMEOUT");
-                
-                // RX_INFO_reg = dwt_read32bitreg(RX_FINFO_ID);
-                // ESP_LOGI(TAG, "RX_FINFO = 0x%08" PRIx32,RX_INFO_reg);
-
-                dwt_forcetrxoff();
-
-                // CHANGE #4
-                vTaskDelay(pdMS_TO_TICKS(10));
-
-                break;
-            }
-
-            vTaskDelay(pdMS_TO_TICKS(5));
+            ESP_LOGI(TAG, "Config %u summary: preamble=%lu sfd=%lu good=%lu phe=%lu fce=%lu rfsl=%lu hw_to=%lu",
+                     (unsigned)(cfg_idx + 1), preamble_count, sfd_count, good_count, phe_count, fce_count, rfsl_count, hw_to_count);
         }
+
+        ESP_LOGI(TAG, "=== Sweep complete, restarting from config 0 ===");
     }
 }
