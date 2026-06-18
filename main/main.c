@@ -147,9 +147,18 @@ void app_main(void)
                 {
                     good_count++;
 
-                    uint32_t frame_len = dwt_read32bitreg(RX_FINFO_ID) & RX_FINFO_RXFL_MASK_1023;
+                    uint32_t rx_finfo = dwt_read32bitreg(RX_FINFO_ID);
+                    uint32_t frame_len = rx_finfo & RX_FINFO_RXFL_MASK_1023;
 
                     ESP_LOGI(TAG, "GOOD FRAME RECEIVED, LEN=%lu, SYS_STATUS=0x%08" PRIx32, frame_len, status_reg);
+                    ESP_LOGI(TAG, "RX_FINFO=0x%08" PRIx32, rx_finfo);
+
+                    dwt_rxdiag_t rx_diag;
+                    dwt_readdiagnostics(&rx_diag);
+                    ESP_LOGI(TAG, "RX_FQUAL: stdNoise=%u maxNoise=%u firstPath=%u firstPathAmp1=%u firstPathAmp2=%u firstPathAmp3=%u maxGrowthCIR=%u rxPreamCount=%u",
+                             rx_diag.stdNoise, rx_diag.maxNoise, rx_diag.firstPath,
+                             rx_diag.firstPathAmp1, rx_diag.firstPathAmp2, rx_diag.firstPathAmp3,
+                             rx_diag.maxGrowthCIR, rx_diag.rxPreamCount);
 
                     if (frame_len > 0 && frame_len <= FRAME_LEN_MAX)
                     {
