@@ -4,7 +4,7 @@
   "idf.openOcdConfigs": [
     "board/esp32-wrover-kit-3.3v.cfg"
   ],
-  "idf.currentSetup": "C:\\esp\\v6.0.1\\esp-idf",
+  "idf.currentSetup": "/Users/tylerkilper/.espressif/v6.0.1/esp-idf",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32"
   },
@@ -13,5 +13,10 @@
     "--background-index",
     "--query-driver=**",
     "--compile-commands-dir=c:\\Users\\kilp235247\\DW1000_Sniffer_V00\\build"
-  ]
+  ],
+  "idf.espIdfPath": "/Users/tylerkilper/.espressif/v6.0.1/esp-idf",
+  "idf.toolsPath": "/Users/tylerkilper/.espressif",
+  "idf.pythonInstallPath": "/usr/local/bin/python3",
+  "idf.port": "/dev/tty.usbserial-023BB1C5",
+  "idf.flashType": "UART"
 }
