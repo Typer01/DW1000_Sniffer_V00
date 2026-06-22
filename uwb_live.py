@@ -24,8 +24,6 @@ Wireshark tip:
 import re
 import sys
 import struct
-import time
-import os
 
 # -----------------------------------------------------------------------
 # Config
@@ -36,19 +34,42 @@ LOG_OUT   = "uwb_capture.txt"
 # DLT_IEEE802_15_4 with FCS
 PCAP_NETWORK = 195
 
+# Number of lines to wait, after a "GOOD FRAME RECEIVED" header, for the
+# hex-dump line before giving up on that frame.
+MAX_LINES_AWAITING_HEX = 8
+
+# Safety valve: if a backtrace is never followed by a recognizable log line
+# (e.g. serial noise during reset), stop suppressing after this many lines
+# so the script can't get stuck silently swallowing output forever.
+MAX_BACKTRACE_SUPPRESS_LINES = 500
+
 # -----------------------------------------------------------------------
 # Regex patterns
 # -----------------------------------------------------------------------
-# Matches a GOOD FRAME line — handles the SYS_STATUS running into hex bytes
-FRAME_RE = re.compile(
-    r'[IW] \((\d+)\) MAIN: GOOD FRAME RECEIVED, LEN=(\d+), SYS_STATUS=0x[0-9a-fA-F]{8}'
-    r'([0-9a-fA-F]{2}(?: [0-9a-fA-F]{2})*)'
+# Strips ANSI color escape codes. idf_monitor.py colorizes I/W/E log lines
+# by default (independent of the firmware's CONFIG_LOG_COLORS setting), so
+# every line arrives wrapped in e.g. "\x1b[0;32m...\x1b[0m".
+ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
+
+# Matches the "GOOD FRAME RECEIVED" header line. The hex payload is NOT on
+# this line — it's printed via a separate raw printf() call on its own
+# line afterwards, with no log prefix at all.
+FRAME_HEADER_RE = re.compile(
+    r'\((\d+)\) MAIN: GOOD FRAME RECEIVED, LEN=(\d+), SYS_STATUS=0x[0-9a-fA-F]{8}'
 )
 
-# Lines to suppress from clean log output
-BACKTRACE_RE = re.compile(
-    r'(Backtrace:|--- 0x|task_wdt:.*triggered|task_wdt:.*IDLE|task_wdt:.*running|task_wdt:.*CPU|task_wdt:.*Print)'
+# A line that is purely space-separated hex bytes (the raw printf dump).
+HEX_LINE_RE = re.compile(r'^([0-9A-Fa-f]{2}(?: [0-9A-Fa-f]{2})*)$')
+
+# Anything that starts a crash/backtrace dump worth suppressing.
+BACKTRACE_START_RE = re.compile(
+    r'Task watchdog got triggered|Guru Meditation Error|abort\(\) was called'
 )
+
+# A normal tagged log line, used to detect that backtrace/reboot noise has
+# ended and regular logging has resumed (any tag, not just MAIN — after a
+# crash reboot, the first lines back are usually "boot:", "cpu_start:", etc).
+NORMAL_LOG_LINE_RE = re.compile(r'^[IWEV] \(\d+\) \S+:')
 
 # -----------------------------------------------------------------------
 # PCAP helpers
@@ -74,6 +95,12 @@ def pcap_record(ts_ms, raw_bytes):
 def main():
     packet_count = 0
     in_backtrace = False
+    backtrace_suppressed_lines = 0
+
+    # Pending frame header, waiting for its hex-dump line to arrive.
+    pending_ts_ms = None
+    pending_declared_len = None
+    pending_lines_waited = 0
 
     # Open pcap — write global header fresh each run
     pcap_file = open(PCAP_OUT, 'wb')
@@ -89,46 +116,67 @@ def main():
 
     try:
         for raw_line in sys.stdin:
-            line = raw_line.rstrip()
+            line = ANSI_RE.sub('', raw_line).rstrip()
 
             # ---- Backtrace detection ----
-            if 'Task watchdog got triggered' in line:
+            if not in_backtrace and BACKTRACE_START_RE.search(line):
+                # Suppress the trigger line itself unconditionally — it's
+                # often a tagged line (e.g. "W (...) task_wdt: ...") that
+                # would otherwise satisfy the recovery check below on this
+                # same pass.
                 in_backtrace = True
+                backtrace_suppressed_lines = 1
+                continue
 
             if in_backtrace:
-                if BACKTRACE_RE.search(line):
-                    continue  # suppress
-                # Check if we're back to a normal MAIN log line
-                if re.match(r'[IWED] \(\d+\) MAIN:', line):
+                backtrace_suppressed_lines += 1
+                if NORMAL_LOG_LINE_RE.match(line) or backtrace_suppressed_lines > MAX_BACKTRACE_SUPPRESS_LINES:
                     in_backtrace = False
                 else:
-                    continue  # still in backtrace noise
+                    continue  # suppress backtrace/reboot noise
 
             # ---- Write to clean log ----
             log_file.write(line + '\n')
             log_file.flush()
 
-            # ---- Check for a good frame ----
-            m = FRAME_RE.search(line)
+            # ---- Check for a new good-frame header ----
+            m = FRAME_HEADER_RE.search(line)
             if m:
-                ts_ms    = int(m.group(1))
-                declared = int(m.group(2))
-                hex_str  = m.group(3).strip()
-                raw      = bytes(int(b, 16) for b in hex_str.split())
+                pending_ts_ms = int(m.group(1))
+                pending_declared_len = int(m.group(2))
+                pending_lines_waited = 0
+                continue
 
-                if len(raw) != declared:
-                    print(f"[uwb_live] WARNING: declared len={declared} but got {len(raw)} bytes", file=sys.stderr)
+            # ---- Waiting for the hex-dump line that follows a header ----
+            if pending_declared_len is not None:
+                pending_lines_waited += 1
 
-                # Write pcap record
-                pcap_file.write(pcap_record(ts_ms, raw))
-                pcap_file.flush()
+                hex_match = HEX_LINE_RE.match(line)
+                if hex_match:
+                    raw = bytes(int(b, 16) for b in hex_match.group(1).split())
 
-                packet_count += 1
-                print(
-                    f"[uwb_live] PKT #{packet_count:04d}  ts={ts_ms}ms  "
-                    f"len={len(raw)}  {raw[:4].hex()}...",
-                    file=sys.stderr
-                )
+                    if len(raw) != pending_declared_len:
+                        print(f"[uwb_live] WARNING: declared len={pending_declared_len} but got {len(raw)} bytes", file=sys.stderr)
+
+                    pcap_file.write(pcap_record(pending_ts_ms, raw))
+                    pcap_file.flush()
+
+                    packet_count += 1
+                    print(
+                        f"[uwb_live] PKT #{packet_count:04d}  ts={pending_ts_ms}ms  "
+                        f"len={len(raw)}  {raw[:4].hex()}...",
+                        file=sys.stderr
+                    )
+
+                    pending_ts_ms = None
+                    pending_declared_len = None
+                    pending_lines_waited = 0
+                elif pending_lines_waited >= MAX_LINES_AWAITING_HEX:
+                    # Frame was likely out of range (len==0 or > FRAME_LEN_MAX)
+                    # and the firmware never printed a hex dump for it.
+                    pending_ts_ms = None
+                    pending_declared_len = None
+                    pending_lines_waited = 0
 
     except KeyboardInterrupt:
         print(f"\n[uwb_live] Stopped. {packet_count} packets written.", file=sys.stderr)
