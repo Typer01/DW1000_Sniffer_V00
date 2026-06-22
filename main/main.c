@@ -44,7 +44,6 @@ static const char *TAG = "MAIN";
 
 static dwt_config_t scan_matrix[] = {
     // CH3, 64M PRF, PHR_EXT — confirmed hits with real data during the full sweep
-    {3, DWT_PRF_64M, DWT_PLEN_2048, DWT_PAC64, 9, 9, 0, DWT_BR_110K, DWT_PHRMODE_EXT, (2048 + 1 + 8 - 64)},
     {3, DWT_PRF_64M, DWT_PLEN_1024, DWT_PAC32, 9, 9, 0, DWT_BR_850K, DWT_PHRMODE_EXT, (1024 + 1 + 8 - 32)},
 };
 #define NUM_CONFIGS (sizeof(scan_matrix) / sizeof(scan_matrix[0]))
@@ -93,16 +92,11 @@ void app_main(void)
 
     while (1)
     {
-        for (size_t cfg_idx = 0; cfg_idx < NUM_CONFIGS; cfg_idx++)
-        {
-            dwt_config_t *cfg = &scan_matrix[cfg_idx];
+        
+            dwt_config_t *cfg = &scan_matrix[0];
 
             dwt_forcetrxoff();
             dwt_configure(cfg);
-
-            ESP_LOGI(TAG, "=== Config %u/%u: prf=%u plen=%u pac=%u rate=%u phr=%u nsSFD=%u ===",
-                     (unsigned)(cfg_idx + 1), (unsigned)NUM_CONFIGS,
-                     cfg->prf, cfg->txPreambLength, cfg->rxPAC, cfg->dataRate, cfg->phrMode, cfg->nsSFD);
 
             uint32_t preamble_count = 0, sfd_count = 0, good_count = 0;
             uint32_t phe_count = 0, fce_count = 0, rfsl_count = 0, hw_to_count = 0;
@@ -262,10 +256,7 @@ void app_main(void)
                 vTaskDelay(pdMS_TO_TICKS(5));
             }
 
-            ESP_LOGI(TAG, "Config %u summary: preamble=%lu sfd=%lu good=%lu phe=%lu fce=%lu rfsl=%lu hw_to=%lu",
-                     (unsigned)(cfg_idx + 1), preamble_count, sfd_count, good_count, phe_count, fce_count, rfsl_count, hw_to_count);
-        }
+            
 
-        ESP_LOGI(TAG, "=== Sweep complete, restarting from config 0 ===");
     }
 }
