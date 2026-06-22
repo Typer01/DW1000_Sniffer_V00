@@ -2,9 +2,11 @@
  * @file main.c
  * @brief DW1000 transmitter for ESP32, used to validate the DW1000_Sniffer_V00 receiver
  *
- * Continuously transmits a fixed, known frame using the same channel/PRF/preamble
- * settings as one of the receiver's scan_matrix configs (see ../../main/main.c),
- * so the receiver can be validated against a real over-the-air signal.
+ * Continuously transmits a standard IEEE 802.15.4 "Blink" frame using the
+ * same channel/PRF/preamble settings as the receiver's rx_config (see
+ * ../../main/main.c), so the full receive pipeline -- DW1000 PHY, the
+ * receiver firmware, uwb_live.py, and Wireshark's 802.15.4 dissector -- can
+ * all be validated end-to-end against a known-good standard frame.
  */
 
 // Include DW1000 driver
@@ -36,10 +38,21 @@ static dwt_config_t tx_config = {
     (1024 + 1 + 8 - 32)      /* SFD timeout. */
 };
 
-/* Fixed, known payload. Last 2 bytes are reserved for the FCS, which the
- * DW1000 computes and fills in automatically. */
-static uint8_t tx_msg[] = {'D', 'W', '1', '0', '0', '0', '-', 'T', 'X', 0x00 /* seq */, 0x00, 0x00 /* FCS */};
-#define TX_MSG_SN_IDX 9
+/* Minimal classic IEEE 802.15.4 Data frame, with no addressing at all, so
+ * it dissects cleanly as valid 802.15.4 in Wireshark with no ambiguity
+ * about field lengths -- this validates the full RX -> uwb_live.py ->
+ * Wireshark pipeline against a known-good standard frame, not just the
+ * DW1000 PHY-layer preamble/CRC.
+ *     - byte 0/1: Frame Control Field, little-endian 0x0001 -- Frame Type
+ *       = Data, Security/Pending/AckReq/PANIDCompression = 0, Dest/Source
+ *       Addressing Mode = None, Frame Version = 0. With both addressing
+ *       modes set to None there is no PAN ID or address field at all, so
+ *       the sequence number is immediately followed by the payload.
+ *     - byte 2: sequence number, incremented for each new frame.
+ *     - byte 3 -> 9: message content.
+ *     - byte 10/11: frame check-sum, automatically set by DW1000. */
+static uint8_t tx_msg[] = {0x01, 0x00, 0x00 /* seq */, 0xDE, 0xCA, 0x01, 0x23, 0x45, 0x67, 0x89, 0x00, 0x00 /* FCS */};
+#define TX_MSG_SN_IDX 2
 
 #define TX_DELAY_MS 200
 
