@@ -20,34 +20,43 @@
 #include "esp_log.h"
 
 #include "esp_timer.h"
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/stream_buffer.h"
+
 static const char *TAG = "MAIN";
 
 /* Buffer to store received frame. Sized for DWT_PHRMODE_EXT (up to 1023 bytes). */
 #define FRAME_LEN_MAX 1023
 
-// Data Rate to Reccomended PLEN
-// 6.8M - 64 or 128 or 256
-// 850k - 256 or 512 or 1024
-// 110k - 2048 or 4096
+typedef enum {
+    RX_EVENT_VALID,
+    RX_EVENT_PHY_ERROR,
+    RX_EVENT_RS_ERROR   // Reed-Solomon
+} rx_event_type_t;
 
-// Reccomended PAC size Expected PLEN - PAC Size
-// 64 - 8
-// 128 - 8
-// 256 - 16
-// 512 - 16
-// 1024 - 32
-// 1536 - 64
-// 2048 - 64
-// 4096 - 64
+typedef struct {
+    rx_event_type_t type;
+    uint32_t timestamp;
 
-// CH3, 64M PRF, PHR_EXT, PLEN1024/PAC32/850K — confirmed working against the
-// transmitter/ validation rig (see ../transmitter/main/main.c).
+    // Only meaningful when type == RX_EVENT_VALID
+    uint8_t payload[FRAME_LEN_MAX];  // Maximum payload size for DWT_PHRMODE_EXT
+    size_t   payload_len;
+    uint32_t rx_qual;     // verify actual register name/width in DW1000 UM
+    uint32_t rx_info;     // same — confirm exact register before using
+} rx_event_t;
+
+/** @todo this the right place to declare this? Or should it be in a header file? */
+QueueHandle_t xRxEventQueue;
+xRxEventQueue = xQueueCreate(20, sizeof(rx_event_t));
+
+
+// CH3, 64M PRF, PHR_EXT, PLEN1024/PAC32/850K - Confirmed working config.
 static const dwt_config_t rx_config = {3, DWT_PRF_64M, DWT_PLEN_1024, DWT_PAC32, 9, 9, 0, DWT_BR_850K, DWT_PHRMODE_EXT, (1024 + 1 + 8 - 32)};
 
-// Heartbeat: periodic liveness/rate log, independent of the radio state.
-#define HEARTBEAT_INTERVAL_US (10 * 1000000)
 
-/**
+/** @todo Review this code
  * Logs RX signal diagnostics common to any resolved reception (good frame
  * or error): noise/amplitude, frequency offset of the remote TX relative to
  * our own clock, and RX timestamp. Not called on a bare frame-wait-timeout,
@@ -72,14 +81,14 @@ static void log_rx_diagnostics(const char *label, uint32_t status_reg)
              rx_diag.maxGrowthCIR, rx_diag.rxPreamCount);
 }
 
-/**
- * @brief Main Application
- */
-void app_main(void)
-{
-    uint8_t rx_buffer[FRAME_LEN_MAX];
 
-    spi_bus_config_t spi_bus_cfg = {
+void DW1000_Receiver_Task(void *pvParameters)
+{
+    /** @todo for checking for valid reception and logging diagnostics. Store RX data in buffer and have second core print this out. */
+    rx_event_t rx_event; // Struct to hold RX event data for queueing to the print task
+    uint8_t rx_buffer[FRAME_LEN_MAX];
+    // DW1000 initialization and configuration code goes here, similar to app_main().
+     spi_bus_config_t spi_bus_cfg = {
         .mosi_io_num = (gpio_num_t)SPI_MOSI_PIN,
         .miso_io_num = (gpio_num_t)SPI_MISO_PIN,
         .sclk_io_num = (gpio_num_t)SPI_CLK_PIN,
@@ -115,10 +124,6 @@ void app_main(void)
     dwt_forcetrxoff();
     dwt_configure((dwt_config_t *)&rx_config);
 
-    ESP_LOGI(TAG, "DW1000 Ready, chan=%u prf=%u plen=%u pac=%u rate=%u phr=%u nsSFD=%u",
-             rx_config.chan, rx_config.prf, rx_config.txPreambLength, rx_config.rxPAC,
-             rx_config.dataRate, rx_config.phrMode, rx_config.nsSFD);
-
     uint32_t preamble_count = 0, sfd_count = 0, good_count = 0;
     uint32_t phe_count = 0, fce_count = 0, rfsl_count = 0, hw_to_count = 0;
 
@@ -132,59 +137,38 @@ void app_main(void)
     if (dwt_rxenable(DWT_START_RX_IMMEDIATE) != DWT_SUCCESS)
     {
         ESP_LOGE(TAG, "RX enable failed");
-        while (1);
+        while (1); /** @todo Handle error more gracefully, possibly with a retry mechanism or a reset of the DW1000. */
     }
 
-    int64_t last_heartbeat = esp_timer_get_time();
+    // Main loop for receiving frames and logging diagnostics.
 
     while (1)
     {
         uint32_t status_reg = dwt_read32bitreg(SYS_STATUS_ID);
-
-        if ((status_reg & SYS_STATUS_RXPRD) && !preamble_seen)
-        {
-            ESP_LOGI(TAG, "PREAMBLE DETECTED");
-            preamble_seen = true;
-            preamble_count++;
-        }
-
-        if ((status_reg & SYS_STATUS_RXSFDD) && !sfd_seen)
-        {
-            ESP_LOGI(TAG, "SFD DETECTED");
-            sfd_seen = true;
-            sfd_count++;
-        }
+        
 
         if (status_reg & SYS_STATUS_RXFCG)
         {
-            good_count++;
 
             uint32_t rx_finfo = dwt_read32bitreg(RX_FINFO_ID);
             uint32_t frame_len = rx_finfo & RX_FINFO_RXFL_MASK_1023;
 
-            ESP_LOGI(TAG, "GOOD FRAME RECEIVED, LEN=%lu, SYS_STATUS=0x%08" PRIx32, frame_len, status_reg);
-            ESP_LOGI(TAG, "RX_FINFO=0x%08" PRIx32, rx_finfo);
+        
+            // log_rx_diagnostics("GOOD", status_reg); /** @todo Implement logging function */
 
-            const char *rate_str = (rx_finfo & RX_FINFO_RXBR_MASK) == RX_FINFO_RXBR_6M ? "6.8M" :
-                                    (rx_finfo & RX_FINFO_RXBR_MASK) == RX_FINFO_RXBR_850k ? "850k" : "110k";
-            const char *prf_str = (rx_finfo & RX_FINFO_RXPRF_MASK) == RX_FINFO_RXPRF_64M ? "64M" : "16M";
-            uint32_t pacc = (rx_finfo & RX_FINFO_RXPACC_MASK) >> RX_FINFO_RXPACC_SHIFT;
+        
+            dwt_readrxdata(rx_buffer, frame_len, 0);
 
-            ESP_LOGI(TAG, "RX_FINFO decode: rate=%s prf=%s preambleAcc=%lu", rate_str, prf_str, pacc);
-
-            log_rx_diagnostics("GOOD", status_reg);
-
-            if (frame_len > 0 && frame_len <= FRAME_LEN_MAX)
-            {
-                dwt_readrxdata(rx_buffer, frame_len, 0);
-
-                for (uint32_t i = 0; i < frame_len; i++)
-                {
-                    printf("%02X ", rx_buffer[i]);
-                }
-
-                printf("\n");
-            }
+            rx_event.type = RX_EVENT_VALID;
+            rx_event.rx_qual = read_rx_qual_register();  // verify actual function/register
+            rx_event.rx_info = rx_finfo;  // store RX_FINFO for diagnostics
+            rx_event.timestamp = dwt_readrxtimestamphi32();
+            rx_event.payload_len = frame_len;
+            /** @todo Implement safety here to ensure that if the FRAM_LEN_MAX is exceeded, the payload is truncated safely (i.e. the PHR_Mode is changed to standard) */
+            memcpy(rx_event.payload, rx_buffer, frame_len);  // Copy the received payload into the event struct
+            
+            // fill payload, payload_len
+            xQueueSend(xRxEventQueue, &rx_event, portMAX_DELAY);
 
             dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG);
 
@@ -214,8 +198,6 @@ void app_main(void)
             sfd_seen = false;
 
             dwt_rxenable(DWT_START_RX_IMMEDIATE);
-
-            vTaskDelay(pdMS_TO_TICKS(1));
 
             continue;
         }
@@ -304,14 +286,31 @@ void app_main(void)
             continue;
         }
 
-        int64_t now = esp_timer_get_time();
-        if ((now - last_heartbeat) >= HEARTBEAT_INTERVAL_US)
-        {
-            ESP_LOGI(TAG, "heartbeat: preamble=%lu sfd=%lu good=%lu phe=%lu fce=%lu rfsl=%lu hw_to=%lu",
-                     preamble_count, sfd_count, good_count, phe_count, fce_count, rfsl_count, hw_to_count);
-            last_heartbeat = now;
-        }
+        /** @todo Implement Heartbeat feature utilizing onboard LED */
 
-        vTaskDelay(pdMS_TO_TICKS(5));
     }
+}
+
+void print_from_buffer_task(void *pvParameters)
+{
+    /** @todo for printing out the RX data buffer. */
+
+    // This task will run on the second core and print the received data from the buffer. @todo Need to determine how to share the buffer between tasks safely (e.g., using a queue or mutex).
+}
+
+
+/**
+ * @brief Main Application
+ */
+void app_main(void)
+{   
+    xTaskCreatePinnedToCore(DW1000_Receiver_Task, "Receiver Task", 2048, NULL, 1, NULL, 0); /** @todo Need to determine stack size and priority for these tasks */
+    xTaskCreatePinnedToCore(print_from_buffer_task, "Print Buffer Task", 2048, NULL, 1, NULL, 1);
+
+    // Here down is old code.
+    
+
+   
+    
+    
 }
