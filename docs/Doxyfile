@@ -1,0 +1,49 @@
+# Doxyfile for DW1000_Sniffer_V00
+# Run from the repo root: doxygen docs/Doxyfile
+# Output: docs/html/index.html
+# Todo List: docs/html/todo.html (linked under "Related Pages")
+
+#---------------------------------------------------------------------------
+# Project
+#---------------------------------------------------------------------------
+PROJECT_NAME           = "DW1000 Sniffer"
+PROJECT_BRIEF          = "ESP32-based UWB packet sniffer using the DW1000 transceiver"
+OUTPUT_DIRECTORY       = docs
+
+#---------------------------------------------------------------------------
+# Input
+#---------------------------------------------------------------------------
+INPUT                  = main \
+                         components \
+                         transmitter/main
+RECURSIVE              = YES
+FILE_PATTERNS          = *.c *.h
+EXCLUDE_PATTERNS       = */build/* */.git/* */managed_components/*
+
+#---------------------------------------------------------------------------
+# Output formats
+#---------------------------------------------------------------------------
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+
+#---------------------------------------------------------------------------
+# Extraction & documentation
+#---------------------------------------------------------------------------
+EXTRACT_ALL            = YES
+OPTIMIZE_OUTPUT_FOR_C  = YES
+JAVADOC_AUTOBRIEF      = YES
+
+#---------------------------------------------------------------------------
+# Special lists (the key feature: @todo collection)
+#---------------------------------------------------------------------------
+GENERATE_TODOLIST      = YES
+GENERATE_BUGLIST       = YES
+GENERATE_TESTLIST      = YES
+GENERATE_DEPRECATEDLIST= YES
+
+#---------------------------------------------------------------------------
+# Warnings
+#---------------------------------------------------------------------------
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO

@@ -80,3 +80,7 @@ Desktop.ini
 .vscode/settings.json
 .vscode/c_cpp_properties.json
 .vscode/settings.json
+
+# Doxygen generated output
+docs/html/
+docs/latex/
