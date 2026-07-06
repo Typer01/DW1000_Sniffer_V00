@@ -162,7 +162,7 @@ void DW1000_Receiver_Task(void *pvParameters)
             dwt_readrxdata(rx_buffer, frame_len, 0);
 
             rx_event.type = RX_EVENT_VALID;
-            rx_event.rx_qual = read_rx_qual_register();  // verify actual function/register
+            rx_event.rx_qual = dwt_read32bitreg(RX_FQUAL_ID); /** @todo check this register name and width in the DW1000 UM*/ 
             rx_event.rx_info = rx_finfo;  // store RX_FINFO for diagnostics
             rx_event.timestamp = dwt_readrxtimestamphi32();
             rx_event.payload_len = frame_len;
@@ -231,6 +231,7 @@ void DW1000_Receiver_Task(void *pvParameters)
             /** Uncomment for debugging @todo Make the Frame Wait Timeout Debug more Robust */
             // ESP_LOGW(TAG, "FRAME WAIT TIMEOUT");
 
+            Atomic_Add_u32(&RX_RFTO, 1); // Increments counter
             dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXRFTO);
             dwt_rxreset();
             dwt_rxenable(DWT_START_RX_IMMEDIATE);
@@ -292,7 +293,7 @@ void app_main(void)
     xRxEventQueue = xQueueCreate(20, sizeof(rx_event_t)); /** @todo Determine proper queue size */
     ESP_LOGI(TAG, "Queue Created: %p", xRxEventQueue);
 
-    xTaskCreatePinnedToCore(DW1000_Receiver_Task, "Receiver Task", 2048, NULL, 1, NULL, 0); /** @todo Need to determine stack size and priority for these tasks */
+    xTaskCreatePinnedToCore(DW1000_Receiver_Task, "Receiver Task", 5120, NULL, 1, NULL, 0); /** @todo Need to determine optimal stack size and priority for these tasks */
     xTaskCreatePinnedToCore(print_from_buffer_task, "Print Buffer Task", 2048, NULL, 1, NULL, 1);
 
     
