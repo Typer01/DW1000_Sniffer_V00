@@ -84,3 +84,4 @@ Desktop.ini
 # Doxygen generated output
 docs/html/
 docs/latex/
+.vscode/settings.json
