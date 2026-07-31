@@ -10,8 +10,6 @@
  * @todo Investigate and clean up includes in driver files
  * @todo MISRA C Compliance Check
  * @todo Update and standardize Log levels, add functionality to filter logging
- * @todo CRITICAL: Determine if Overruns are happening due to slow SPI read, rn it looks like for every 5 receiveed I get 24 overruns
- * @todo CRITICAL: Correct RX_FQUAL Register, currently only reading half of it.
  */
 
 // Include DW1000 driver
@@ -331,7 +329,7 @@ void print_from_buffer_task(void *pvParameters)
             //ESP_LOGD(TAG, "Received RX Event from Queue: Type=%d, Timestamp=0x%08" PRIx32 ", Payload Length=%zu", rx_event.type, rx_event.timestamp, rx_event.payload_len);
             // CSV Print Format
             // Timestamp, Payload Length, RX Quality, RX Info, Payload Data
-            printf("%" PRIu32 ",%zu,%" PRIu32 ",0x%08" PRIX32 ",",
+            printf("%" PRIu32 ",%zu,0x%016" PRIX64 ",0x%08" PRIX32 ",",
                    rx_event.timestamp, rx_event.payload_len,
                    rx_event.rx_qual, rx_event.rx_info);
 
@@ -365,6 +363,13 @@ void print_from_buffer_task(void *pvParameters)
     
 }
 
+void display_update_task(void *pvParameters)
+{
+    // This task will run on the second core and updaate the display with the received data.
+    /** @todo Implement display update functionality */
+
+    // Wait for 
+}
 
 /**
  * @brief Main Application
@@ -376,5 +381,6 @@ void app_main(void)
 
     xTaskCreatePinnedToCore(DW1000_Receiver_Task, "Receiver Task", 5120, NULL, 1, NULL, 0); /** @todo Need to determine optimal stack size and priority for these tasks */
     xTaskCreatePinnedToCore(print_from_buffer_task, "Print Buffer Task", 5120, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(display_update_task, "Display Update Task", 5120, NULL, 1, NULL, 1);
     
 }
