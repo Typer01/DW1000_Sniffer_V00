@@ -9,9 +9,6 @@
 #include "driver/i2c_master.h"
 #include "esp_err.h"
 
-static const char *TAG = "i2c";
-
-
 /**
  * @brief Add and configure an I2C device on an already-initialized bus.
  *

@@ -7,6 +7,8 @@
 #include "esp_err.h"
 #include "esp_log.h"
 
+static const char *TAG = "i2c";
+
 /**
  * @brief Add and configure an I2C device on an already-initialized bus.
  */

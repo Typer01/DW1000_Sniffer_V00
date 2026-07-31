@@ -1,13 +1,23 @@
 #include <stdio.h>
+#include <string.h>
 #include "SSD1306.h"
 #include "i2c.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 
-void SSD1306_init(i2c_master_dev_handle_t i2c_dev)
+static const char *TAG = "SSD1306";
+
+#define SSD1306_XFER_TIMEOUT_MS 100
+
+// Local copy of display RAM. draw_pixel only modifies this buffer; call
+// SSD1306_update() to push it out over I2C.
+static uint8_t framebuffer[SSD1306_PAGES][SSD1306_WIDTH];
+
+esp_err_t SSD1306_init(i2c_master_dev_handle_t i2c_dev)
 {
     // Initialize the SSD1306 display
-    uint8_t init_sequence[] = { /** @todo Fill in the initialization sequence */
+    uint8_t init_sequence[] = {
+        0x00, // Control byte: command stream follows
         0xAE, // Display off
         0xD5, 0x80, // Set display clock divide ratio/oscillator frequency
         0xA8, 0x3F, // Set multiplex ratio (1 to 64)
@@ -26,41 +36,56 @@ void SSD1306_init(i2c_master_dev_handle_t i2c_dev)
         0xAF // Display ON
     };
 
-    i2c_write_byte(i2c_dev, init_sequence, sizeof(init_sequence), pdMS_TO_TICKS(100));
+    esp_err_t ret = i2c_write_byte(i2c_dev, init_sequence, sizeof(init_sequence), SSD1306_XFER_TIMEOUT_MS);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to send init sequence: %s", esp_err_to_name(ret));
+    }
+    return ret;
 }
 
-void SSD1306_clear(i2c_master_dev_handle_t i2c_dev)
+esp_err_t SSD1306_clear(i2c_master_dev_handle_t i2c_dev)
 {
-    // Clear the display by writing zeros to the entire display RAM
-    uint8_t clear_buffer[1024] = {0}; // Assuming a 128x64 display (8 pages of 128 bytes each)
-    i2c_write_byte(i2c_dev, clear_buffer, 1024, pdMS_TO_TICKS(100));
-
-    return;
+    memset(framebuffer, 0, sizeof(framebuffer));
+    return SSD1306_update(i2c_dev);
 }
 
-void SSD1306_draw_pixel(i2c_master_dev_handle_t i2c_dev, uint8_t x, uint8_t y)
+void SSD1306_draw_pixel(uint8_t x, uint8_t y)
 {
-    // Draw a pixel at (x, y) by setting the corresponding bit in the display RAM
-    if (x >= 128 || y >= 64) {
-        ESP_LOGE("SSD1306", "Pixel coordinates out of bounds: (%d, %d)", x, y);
-        return; // Out of bounds
+    // Draw a pixel at (x, y) by setting the corresponding bit in the local framebuffer
+    if (x >= SSD1306_WIDTH || y >= SSD1306_HEIGHT) {
+        ESP_LOGE(TAG, "Pixel coordinates out of bounds: (%d, %d)", x, y);
+        return;
     }
 
     uint8_t page = y / 8;
     uint8_t bit_position = y % 8;
 
-    uint8_t data[2] = {0xB0 | page, 0x00 | x}; // Set page and column address
+    framebuffer[page][x] |= (1 << bit_position);
+}
 
-    // Read the current byte from the display RAM
-    uint8_t current_byte;
-    i2c_read_byte(i2c_dev, &current_byte, 1, pdMS_TO_TICKS(100));
+esp_err_t SSD1306_update(i2c_master_dev_handle_t i2c_dev)
+{
+    // Point the controller's addressing window at the full display before
+    // streaming the framebuffer (horizontal addressing mode, matches SSD1306_init).
+    uint8_t addr_cmd[] = {
+        0x00, // Control byte: command stream follows
+        0x21, 0x00, SSD1306_WIDTH - 1,  // Set column address range
+        0x22, 0x00, SSD1306_PAGES - 1,  // Set page address range
+    };
 
-    // Set the bit for the pixel
-    current_byte |= (1 << bit_position);
+    esp_err_t ret = i2c_write_byte(i2c_dev, addr_cmd, sizeof(addr_cmd), SSD1306_XFER_TIMEOUT_MS);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set addressing window: %s", esp_err_to_name(ret));
+        return ret;
+    }
 
-    // Write back the modified byte to the display RAM
-    i2c_write_byte(i2c_dev, data, sizeof(data), pdMS_TO_TICKS(100));
-    i2c_write_byte(i2c_dev, &current_byte, 1, pdMS_TO_TICKS(100));
+    static uint8_t tx_buffer[1 + sizeof(framebuffer)];
+    tx_buffer[0] = 0x40; // Control byte: data stream follows
+    memcpy(&tx_buffer[1], framebuffer, sizeof(framebuffer));
 
-    return;
+    ret = i2c_write_byte(i2c_dev, tx_buffer, sizeof(tx_buffer), SSD1306_XFER_TIMEOUT_MS);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write framebuffer: %s", esp_err_to_name(ret));
+    }
+    return ret;
 }
